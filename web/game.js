@@ -1,8 +1,9 @@
 // ─── Koneksi WebSocket ──────────────────────────────────────
 const WS_URL = "ws://localhost:8765";
-let sockets = {}; // { 1: ws, 2: ws }
+let sockets = {};
 let myState = null;
 let gameOver = false;
+let reconnecting = false;
 
 // ─── Canvas setup ───────────────────────────────────────────
 const canvas = document.getElementById("gameCanvas");
@@ -49,7 +50,7 @@ const scoreP2 = document.getElementById("score-p2");
 const cardP1 = document.getElementById("card-p1");
 const cardP2 = document.getElementById("card-p2");
 
-// ─── Set canvas size ────────────────────────────────────────
+// ─── Helpers ────────────────────────────────────────────────
 function setupCanvas(gw, gh) {
   GRID_W = gw;
   GRID_H = gh;
@@ -57,13 +58,11 @@ function setupCanvas(gw, gh) {
   canvas.height = CELL * GRID_H;
 }
 
-// ─── Status koneksi ─────────────────────────────────────────
 function setConnStatus(status, text) {
   connDot.className = status;
   connText.textContent = text;
 }
 
-// ─── Overlay ────────────────────────────────────────────────
 function showOverlay(titleText, titleClass, subText, showDots = false) {
   overlay.classList.remove("hidden");
   overlayTitle.textContent = titleText;
@@ -76,37 +75,35 @@ function hideOverlay() {
   overlay.classList.add("hidden");
 }
 
-// ─── Koneksi WebSocket ──────────────────────────────────────
-function connectPlayer(pid) {
-  return new Promise((resolve, reject) => {
-    const ws = new WebSocket(WS_URL);
-    ws.onopen = () => {
-      sockets[pid] = ws;
-      console.log(`[+] Socket P${pid} terkonek`);
-    };
-    ws.onmessage = (e) => {
-      const msg = JSON.parse(e.data);
-      if (msg.type === "init") {
-        console.log(`[*] P${pid} assigned sebagai Player ${msg.player_id}`);
-        if (msg.grid_w) setupCanvas(msg.grid_w, msg.grid_h);
-        resolve(ws);
-      } else if (msg.type === "error") {
-        reject(new Error(msg.msg));
-      }
-      handleMessage(msg);
-    };
-    ws.onerror = () => reject(new Error("Gagal konek ke server"));
-    ws.onclose = () => {
-      setConnStatus("disconnected", "Terputus dari server");
-      if (!gameOver)
-        showOverlay(
-          "KONEKSI TERPUTUS",
-          "waiting",
-          "Refresh halaman untuk reconnect",
-          false,
-        );
-    };
-  });
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+// ─── Reconnect logic ────────────────────────────────────────
+async function startReconnectLoop() {
+  if (reconnecting) return;
+  reconnecting = true;
+
+  let attempt = 1;
+  while (true) {
+    showOverlay(
+      "RECONNECTING...",
+      "waiting",
+      `Mencoba koneksi ulang... (${attempt})`,
+      true,
+    );
+    setConnStatus("", `Reconnecting... (${attempt})`);
+
+    try {
+      await initGame();
+      reconnecting = false;
+      return;
+    } catch (e) {
+      console.warn(`[!] Reconnect gagal (${attempt}):`, e.message);
+      attempt++;
+      await sleep(3000); // tunggu 3 detik sebelum coba lagi
+    }
+  }
 }
 
 // ─── Handle pesan dari server ───────────────────────────────
@@ -143,12 +140,33 @@ function handleMessage(msg) {
           false,
         );
       }
+      // Setelah game over, tunggu lalu reconnect otomatis
+      setTimeout(() => {
+        gameOver = false;
+        myState = null;
+        sockets = {};
+        resetHUD();
+        startReconnectLoop();
+      }, 4000);
+      break;
+
+    case "error":
+      // Server penuh — coba lagi sebentar lagi
+      showOverlay("MENUNGGU...", "waiting", msg.msg, true);
       break;
   }
 }
 
 // ─── Update HUD skor ────────────────────────────────────────
 let prevScores = { 1: 0, 2: 0 };
+
+function resetHUD() {
+  scoreP1.textContent = "00";
+  scoreP2.textContent = "00";
+  prevScores = { 1: 0, 2: 0 };
+  cardP1.className = "score-card p1 alive";
+  cardP2.className = "score-card p2 alive";
+}
 
 function updateHUD(players) {
   players.forEach((p) => {
@@ -166,6 +184,66 @@ function updateHUD(players) {
     card.classList.toggle("alive", p.alive);
     card.classList.toggle("dead", !p.alive);
   });
+}
+
+// ─── Koneksi WebSocket ──────────────────────────────────────
+function connectPlayer(pid) {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(WS_URL);
+    const timeout = setTimeout(() => {
+      ws.close();
+      reject(new Error("Timeout konek ke server"));
+    }, 5000);
+
+    ws.onopen = () => {
+      sockets[pid] = ws;
+      console.log(`[+] Socket P${pid} terkonek`);
+    };
+
+    ws.onmessage = (e) => {
+      const msg = JSON.parse(e.data);
+      if (msg.type === "init") {
+        clearTimeout(timeout);
+        console.log(`[*] P${pid} assigned sebagai Player ${msg.player_id}`);
+        if (msg.grid_w) setupCanvas(msg.grid_w, msg.grid_h);
+        resolve(ws);
+      } else if (msg.type === "error") {
+        clearTimeout(timeout);
+        reject(new Error(msg.msg));
+      }
+      handleMessage(msg);
+    };
+
+    ws.onerror = () => {
+      clearTimeout(timeout);
+      reject(
+        new Error("Gagal konek ke server — pastikan server_ws.py berjalan"),
+      );
+    };
+
+    ws.onclose = () => {
+      if (!gameOver && !reconnecting) {
+        setConnStatus("disconnected", "Koneksi terputus");
+        startReconnectLoop();
+      }
+    };
+  });
+}
+
+// ─── Init game ──────────────────────────────────────────────
+async function initGame() {
+  sockets = {};
+  await connectPlayer(1);
+  await sleep(150);
+  await connectPlayer(2);
+
+  setConnStatus("connected", "Terkonek — menunggu game...");
+  showOverlay(
+    "MENUNGGU...",
+    "waiting",
+    "Kedua pemain terkonek, game akan dimulai!",
+    true,
+  );
 }
 
 // ─── Render ─────────────────────────────────────────────────
@@ -191,14 +269,12 @@ function drawSnake(snake, colorHead, colorBody) {
     const x = seg.x * CELL + 1;
     const y = seg.y * CELL + 1;
     const sz = CELL - 2;
-    const r = i === 0 ? 6 : 4;
 
     ctx.fillStyle = i === 0 ? colorHead : colorBody;
     ctx.beginPath();
-    ctx.roundRect(x, y, sz, sz, r);
+    ctx.roundRect(x, y, sz, sz, i === 0 ? 6 : 4);
     ctx.fill();
 
-    // Mata pada kepala
     if (i === 0) {
       ctx.fillStyle = "rgba(0,0,0,0.7)";
       ctx.beginPath();
@@ -217,7 +293,6 @@ function drawFood(food) {
   const cy = food.y * CELL + CELL / 2;
   const r = CELL / 2 - 3;
 
-  // Glow effect
   const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 2);
   grad.addColorStop(0, COLORS.foodGlow);
   grad.addColorStop(1, "transparent");
@@ -226,47 +301,34 @@ function drawFood(food) {
   ctx.arc(cx, cy, r * 2, 0, Math.PI * 2);
   ctx.fill();
 
-  // Makanan
   ctx.fillStyle = COLORS.food;
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
   ctx.fill();
 
-  // Highlight
   ctx.fillStyle = "rgba(255,255,255,0.5)";
   ctx.beginPath();
   ctx.arc(cx - r * 0.3, cy - r * 0.3, r * 0.35, 0, Math.PI * 2);
   ctx.fill();
 }
 
-// ─── Game loop render ────────────────────────────────────────
 function render() {
   ctx.fillStyle = COLORS.bg;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   drawGrid();
 
-  if (!myState) {
-    requestAnimationFrame(render);
-    return;
+  if (myState) {
+    const stype = myState.type;
+    const players = myState.players || [];
+
+    if (stype === "state" && myState.food) drawFood(myState.food);
+
+    players.forEach((p) => {
+      if (!p.snake || p.snake.length === 0) return;
+      if (p.id === 1) drawSnake(p.snake, COLORS.p1Head, COLORS.p1Dark);
+      else drawSnake(p.snake, COLORS.p2Head, COLORS.p2Dark);
+    });
   }
-
-  const stype = myState.type;
-
-  // Gambar makanan hanya saat game berjalan
-  if (stype === "state" && myState.food) {
-    drawFood(myState.food);
-  }
-
-  // Gambar ular
-  const players = myState.players || [];
-  players.forEach((p) => {
-    if (!p.snake || p.snake.length === 0) return;
-    if (p.id === 1) {
-      drawSnake(p.snake, COLORS.p1Head, COLORS.p1Dark);
-    } else {
-      drawSnake(p.snake, COLORS.p2Head, COLORS.p2Dark);
-    }
-  });
 
   requestAnimationFrame(render);
 }
@@ -274,49 +336,24 @@ function render() {
 // ─── Input keyboard ─────────────────────────────────────────
 document.addEventListener("keydown", (e) => {
   if (gameOver) return;
-  e.preventDefault();
-
   const ctrl = CONTROLS[e.code];
-  if (!ctrl || !sockets[ctrl.pid]) return;
-
+  if (!ctrl) return;
+  e.preventDefault();
   const ws = sockets[ctrl.pid];
-  if (ws.readyState === WebSocket.OPEN) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: "dir", dir: ctrl.dir }));
   }
 });
 
-// ─── Init ───────────────────────────────────────────────────
-async function init() {
-  setupCanvas(GRID_W, GRID_H);
-  showOverlay("CONNECTING...", "waiting", "Menghubungkan ke server...", true);
-  setConnStatus("", "Menghubungkan...");
+// ─── Start ──────────────────────────────────────────────────
+setupCanvas(GRID_W, GRID_H);
+showOverlay("CONNECTING...", "waiting", "Menghubungkan ke server...", true);
+setConnStatus("", "Menghubungkan...");
+render();
 
-  try {
-    // Konek P1 dulu, tunggu init, baru konek P2
-    await connectPlayer(1);
-    await new Promise((r) => setTimeout(r, 100));
-    await connectPlayer(2);
-
-    setConnStatus("connected", "Terkonek — menunggu game...");
-    showOverlay(
-      "MENUNGGU...",
-      "waiting",
-      "Kedua pemain terkonek, game akan dimulai!",
-      true,
-    );
-
-    // Mulai render loop
-    render();
-  } catch (err) {
-    showOverlay(
-      "GAGAL KONEK",
-      "waiting",
-      err.message + " — Pastikan server_ws.py berjalan",
-      false,
-    );
-    setConnStatus("disconnected", "Gagal terkonek");
-    console.error(err);
-  }
-}
-
-init();
+initGame().catch((err) => {
+  showOverlay("GAGAL KONEK", "waiting", err.message, false);
+  setConnStatus("disconnected", "Gagal terkonek");
+  // Tetap coba reconnect meski gagal pertama kali
+  setTimeout(startReconnectLoop, 3000);
+});
