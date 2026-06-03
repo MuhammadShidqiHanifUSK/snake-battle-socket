@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Snake Battle</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>SNAKE <span>BATTLE</span></h1>
+    </header>
+
+    <div class="game-wrapper">
+      <!-- HUD Skor -->
+      <div class="hud">
+        <div class="score-card p1 alive" id="card-p1">
+          <div class="score-dot"></div>
+          <div class="score-info">
+            <span class="score-label">PLAYER 1</span>
+            <span class="score-value" id="score-p1">00</span>
+          </div>
+          <span class="score-ctrl">WASD</span>
+        </div>
+        <div class="score-card p2 alive" id="card-p2">
+          <div class="score-dot"></div>
+          <div class="score-info">
+            <span class="score-label">PLAYER 2</span>
+            <span class="score-value" id="score-p2">00</span>
+          </div>
+          <span class="score-ctrl">↑↓←→</span>
+        </div>
+      </div>
+
+      <!-- Canvas game -->
+      <div class="canvas-container">
+        <canvas id="gameCanvas"></canvas>
+
+        <!-- Overlay -->
+        <div id="overlay">
+          <div class="overlay-title waiting" id="overlayTitle">
+            CONNECTING...
+          </div>
+          <div class="overlay-sub" id="overlaySub">
+            Menghubungkan ke server...
+          </div>
+          <div class="overlay-dots" id="overlayDots">
+            <div class="overlay-dot"></div>
+            <div class="overlay-dot"></div>
+            <div class="overlay-dot"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Status koneksi -->
+      <div id="conn-status">
+        <div id="conn-dot"></div>
+        <span id="conn-text">Menghubungkan...</span>
+      </div>
+    </div>
+
+    <script src="game.js"></script>
+  </body>
+</html>
