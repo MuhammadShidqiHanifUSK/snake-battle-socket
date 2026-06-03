@@ -5,17 +5,26 @@ import random
 import time
 
 # ─── Konfigurasi ───────────────────────────────────────────
-HOST = '0.0.0.0'   # terima koneksi dari semua IP
-PORT = 5555        # port yang dipakai
-GRID_W = 30        # lebar arena (dalam kotak)
-GRID_H = 25        # tinggi arena (dalam kotak)
-TICK_RATE = 0.15   # kecepatan game (detik per tick)
+HOST      = '0.0.0.0'
+PORT      = 5555
+GRID_W    = 30
+GRID_H    = 25
+TICK_RATE = 0.15
 
 # ─── State game ────────────────────────────────────────────
-players = {}       # { conn: { 'id': int, 'snake': [...], 'dir': str, 'score': int, 'alive': bool } }
-food = None        # posisi makanan { 'x': int, 'y': int }
+players      = {}
+food         = None
 game_running = False
-lock = threading.Lock()
+lock         = threading.Lock()
+
+# ─── Reset state ───────────────────────────────────────────
+def reset_game():
+    """Reset semua state untuk game baru."""
+    global players, food, game_running
+    players      = {}
+    food         = None
+    game_running = False
+    print("[*] State direset — siap menerima pemain baru\n")
 
 # ─── Fungsi bantu ──────────────────────────────────────────
 def spawn_food():
@@ -31,17 +40,15 @@ def spawn_food():
 def check_collision(snake, all_snakes):
     """Cek apakah kepala ular menabrak sesuatu."""
     head = snake[0]
-    # Nabrak tembok
     if head['x'] < 0 or head['x'] >= GRID_W or head['y'] < 0 or head['y'] >= GRID_H:
         return True
-    # Nabrak semua badan (termasuk diri sendiri)
     for s in all_snakes:
-        if head in s[1:]:   # skip kepala lawan (boleh papasan kepala)
+        if head in s[1:]:
             return True
     return False
 
 def move_snake(snake, direction):
-    """Gerakkan ular 1 langkah sesuai arah, kembalikan posisi kepala baru."""
+    """Gerakkan ular 1 langkah sesuai arah."""
     head = snake[0].copy()
     if direction == 'UP':    head['y'] -= 1
     if direction == 'DOWN':  head['y'] += 1
@@ -51,7 +58,7 @@ def move_snake(snake, direction):
 
 def broadcast(data):
     """Kirim data ke semua client yang terkoneksi."""
-    msg = (json.dumps(data) + '\n').encode()
+    msg  = (json.dumps(data) + '\n').encode()
     dead = []
     for conn in list(players.keys()):
         try:
@@ -64,8 +71,7 @@ def broadcast(data):
 # ─── Handle client ─────────────────────────────────────────
 def handle_client(conn, addr, player_id):
     """Thread untuk menerima input dari 1 client."""
-    global game_running
-    print(f"[+] Player {player_id} terkoneksi dari {addr}")
+    print(f"[+] Player {player_id} terkonek dari {addr[0]}:{addr[1]}")
     buffer = ''
     try:
         while True:
@@ -85,7 +91,6 @@ def handle_client(conn, addr, player_id):
                             if conn in players and players[conn]['alive']:
                                 new_dir = msg.get('dir')
                                 cur_dir = players[conn]['dir']
-                                # Cegah balik arah 180 derajat
                                 opposites = {'UP':'DOWN','DOWN':'UP','LEFT':'RIGHT','RIGHT':'LEFT'}
                                 if new_dir != opposites.get(cur_dir):
                                     players[conn]['dir'] = new_dir
@@ -112,25 +117,22 @@ def game_loop():
             if len(players) < 2:
                 continue
 
-            all_snakes = [p['snake'] for p in players.values() if p['alive']]
-            dead_this_tick = []
-
-            for conn, p in players.items():
+            # Gerakkan semua ular
+            for conn, p in list(players.items()):
                 if not p['alive']:
                     continue
                 new_head = move_snake(p['snake'], p['dir'])
                 p['snake'].insert(0, new_head)
 
-                # Cek makan
                 if new_head == food:
                     p['score'] += 1
                     food = spawn_food()
                 else:
-                    p['snake'].pop()  # hapus ekor kalau tidak makan
+                    p['snake'].pop()
 
             # Cek tabrakan setelah semua ular bergerak
-            all_snakes = [p['snake'] for p in players.values() if p['alive']]
-            for conn, p in players.items():
+            dead_this_tick = []
+            for conn, p in list(players.items()):
                 if not p['alive']:
                     continue
                 other_snakes = [p2['snake'] for c2, p2 in players.items() if c2 != conn and p2['alive']]
@@ -140,37 +142,29 @@ def game_loop():
             for conn in dead_this_tick:
                 players[conn]['alive'] = False
 
-            # Bangun state untuk dikirim ke client
+            # Broadcast state
             state = {
                 'type': 'state',
                 'food': food,
                 'players': [
-                    {
-                        'id': p['id'],
-                        'snake': p['snake'],
-                        'score': p['score'],
-                        'alive': p['alive']
-                    }
+                    {'id': p['id'], 'snake': p['snake'], 'score': p['score'], 'alive': p['alive']}
                     for p in players.values()
                 ]
             }
             broadcast(state)
 
-            # Cek kondisi game over
+            # Cek game over
             alive_players = [p for p in players.values() if p['alive']]
             if len(alive_players) <= 1:
-                # Tentukan pemenang
-                if alive_players:
-                    winner_id = alive_players[0]['id']
-                else:
-                    winner_id = None  # seri (mati barengan)
-
+                winner_id = alive_players[0]['id'] if alive_players else None
                 broadcast({'type': 'gameover', 'winner': winner_id})
                 game_running = False
                 print(f"[*] Game selesai! Pemenang: Player {winner_id}")
                 break
 
     print("[*] Game loop berhenti.")
+    time.sleep(4)
+    reset_game()
 
 # ─── Main server ───────────────────────────────────────────
 def start_server():
@@ -180,52 +174,60 @@ def start_server():
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.bind((HOST, PORT))
     server.listen(2)
-    print(f"[*] Server berjalan di {HOST}:{PORT}")
-    print("[*] Menunggu 2 pemain...")
 
-    player_id = 1
-    while len(players) < 2:
-        conn, addr = server.accept()
+    while True:
+        print(f"[*] Server berjalan di {HOST}:{PORT}")
+        print("[*] Menunggu 2 pemain...\n")
 
-        # Tentukan posisi awal ular (kiri dan kanan)
-        # Player 1 — pojok kiri
-        if player_id == 1:
-            start_snake = [{'x': 2, 'y': 5}, {'x': 1, 'y': 5}, {'x': 0, 'y': 5}]
-            start_dir = 'RIGHT'
-        # Player 2 — pojok kanan
-        else:
-            start_snake = [{'x': 17, 'y': 14}, {'x': 18, 'y': 14}, {'x': 19, 'y': 14}]
-            start_dir = 'LEFT'
+        player_id = 1
+        while len(players) < 2:
+            conn, addr = server.accept()
 
-        with lock:
-            players[conn] = {
-                'id': player_id,
-                'snake': start_snake,
-                'dir': start_dir,
-                'score': 0,
-                'alive': True
-            }
+            # Tolak jika slot penuh atau game sedang berjalan
+            if len(players) >= 2 or game_running:
+                conn.sendall((json.dumps({'type': 'error', 'msg': 'Server penuh'}) + '\n').encode())
+                conn.close()
+                continue
 
-        # Beritahu client nomor player mereka
-        conn.sendall((json.dumps({'type': 'init', 'player_id': player_id}) + '\n').encode())
+            if player_id == 1:
+                start_snake = [{'x': 2,  'y': 5},  {'x': 1,  'y': 5},  {'x': 0,  'y': 5}]
+                start_dir   = 'RIGHT'
+            else:
+                start_snake = [{'x': 27, 'y': 19}, {'x': 28, 'y': 19}, {'x': 29, 'y': 19}]
+                start_dir   = 'LEFT'
 
-        t = threading.Thread(target=handle_client, args=(conn, addr, player_id), daemon=True)
-        t.start()
+            with lock:
+                players[conn] = {
+                    'id':    player_id,
+                    'snake': start_snake,
+                    'dir':   start_dir,
+                    'score': 0,
+                    'alive': True
+                }
 
-        player_id += 1
+            conn.sendall((json.dumps({
+                'type':      'init',
+                'player_id': player_id,
+                'grid_w':    GRID_W,
+                'grid_h':    GRID_H
+            }) + '\n').encode())
 
-    print("[*] 2 pemain terkoneksi! Game dimulai dalam 3 detik...")
-    food = spawn_food()
-    # Countdown 6-5-4-3-2-1
-    for i in range(6, 0, -1):
-        broadcast({'type': 'countdown', 'count': i, 'food': food})
-        time.sleep(1)
+            t = threading.Thread(target=handle_client, args=(conn, addr, player_id), daemon=True)
+            t.start()
 
-    game_running = True
-    broadcast({'type': 'start', 'food': food})
+            player_id += 1
 
-    game_loop()
-    server.close()
+        print("[*] 2 pemain terkonek! Memulai countdown...")
+        food = spawn_food()
+
+        for i in range(6, 0, -1):
+            broadcast({'type': 'countdown', 'count': i, 'food': food})
+            time.sleep(1)
+
+        game_running = True
+        broadcast({'type': 'start', 'food': food})
+
+        game_loop()
 
 if __name__ == '__main__':
     start_server()
