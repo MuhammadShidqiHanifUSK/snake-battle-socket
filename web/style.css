@@ -1,0 +1,352 @@
+@import url("https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Rajdhani:wght@400;600;700&display=swap");
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg: #0a0e1a;
+  --bg2: #0f1527;
+  --bg3: #151d35;
+  --border: #1e2d50;
+  --p1: #00ff88;
+  --p1-dark: #00994d;
+  --p1-glow: rgba(0, 255, 136, 0.3);
+  --p2: #ff4466;
+  --p2-dark: #99001f;
+  --p2-glow: rgba(255, 68, 102, 0.3);
+  --food: #ffd700;
+  --food-glow: rgba(255, 215, 0, 0.5);
+  --text: #c8d8ff;
+  --text-dim: #4a5a80;
+  --accent: #3d5aff;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Rajdhani", sans-serif;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* Animasi background grid */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(30, 45, 80, 0.3) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(30, 45, 80, 0.3) 1px, transparent 1px);
+  background-size: 40px 40px;
+  animation: gridMove 20s linear infinite;
+  z-index: 0;
+}
+
+@keyframes gridMove {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 40px 40px;
+  }
+}
+
+/* Header */
+header {
+  position: relative;
+  z-index: 10;
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+header h1 {
+  font-family: "Press Start 2P", monospace;
+  font-size: 20px;
+  color: var(--p1);
+  text-shadow:
+    0 0 20px var(--p1-glow),
+    0 0 40px var(--p1-glow);
+  letter-spacing: 2px;
+}
+
+header h1 span {
+  color: var(--p2);
+  text-shadow:
+    0 0 20px var(--p2-glow),
+    0 0 40px var(--p2-glow);
+}
+
+/* Layout utama */
+.game-wrapper {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+/* HUD skor */
+.hud {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  gap: 12px;
+}
+
+.score-card {
+  flex: 1;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition:
+    border-color 0.3s,
+    box-shadow 0.3s;
+}
+
+.score-card.p1 {
+  border-color: var(--p1-dark);
+}
+.score-card.p2 {
+  border-color: var(--p2-dark);
+  flex-direction: row-reverse;
+}
+.score-card.p1.alive {
+  box-shadow: 0 0 15px var(--p1-glow);
+  border-color: var(--p1);
+}
+.score-card.p2.alive {
+  box-shadow: 0 0 15px var(--p2-glow);
+  border-color: var(--p2);
+}
+.score-card.dead {
+  opacity: 0.4;
+}
+
+.score-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.score-card.p1 .score-dot {
+  background: var(--p1);
+  box-shadow: 0 0 8px var(--p1);
+}
+.score-card.p2 .score-dot {
+  background: var(--p2);
+  box-shadow: 0 0 8px var(--p2);
+}
+
+.score-info {
+  display: flex;
+  flex-direction: column;
+}
+.score-card.p2 .score-info {
+  align-items: flex-end;
+}
+
+.score-label {
+  font-family: "Press Start 2P", monospace;
+  font-size: 8px;
+  color: var(--text-dim);
+  letter-spacing: 1px;
+}
+
+.score-value {
+  font-family: "Press Start 2P", monospace;
+  font-size: 14px;
+  transition: color 0.2s;
+}
+
+.score-card.p1 .score-value {
+  color: var(--p1);
+}
+.score-card.p2 .score-value {
+  color: var(--p2);
+}
+
+.score-ctrl {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-weight: 600;
+  letter-spacing: 1px;
+  margin-left: auto;
+}
+.score-card.p2 .score-ctrl {
+  margin-left: 0;
+  margin-right: auto;
+}
+
+/* Canvas area */
+.canvas-container {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow:
+    0 0 40px rgba(61, 90, 255, 0.15),
+    inset 0 0 40px rgba(0, 0, 0, 0.5);
+}
+
+canvas {
+  display: block;
+}
+
+/* Overlay */
+#overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 14, 26, 0.88);
+  backdrop-filter: blur(4px);
+  gap: 16px;
+  transition: opacity 0.3s;
+}
+
+#overlay.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.overlay-title {
+  font-family: "Press Start 2P", monospace;
+  font-size: 28px;
+  text-align: center;
+  line-height: 1.6;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.overlay-title.countdown {
+  color: var(--food);
+  text-shadow: 0 0 30px var(--food-glow);
+  font-size: 64px;
+}
+.overlay-title.waiting {
+  color: var(--accent);
+  font-size: 18px;
+}
+.overlay-title.win-p1 {
+  color: var(--p1);
+  text-shadow: 0 0 30px var(--p1-glow);
+}
+.overlay-title.win-p2 {
+  color: var(--p2);
+  text-shadow: 0 0 30px var(--p2-glow);
+}
+.overlay-title.draw {
+  color: var(--food);
+}
+
+.overlay-sub {
+  font-size: 14px;
+  color: var(--text-dim);
+  letter-spacing: 2px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.overlay-dots {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.overlay-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  animation: dotBlink 1.2s ease-in-out infinite;
+}
+.overlay-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.overlay-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes dotBlink {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+}
+
+/* Koneksi status */
+#conn-status {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#conn-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  transition:
+    background 0.3s,
+    box-shadow 0.3s;
+}
+
+#conn-dot.connected {
+  background: var(--p1);
+  box-shadow: 0 0 8px var(--p1);
+}
+#conn-dot.disconnected {
+  background: var(--p2);
+  box-shadow: 0 0 8px var(--p2);
+}
+
+/* Score pop animation */
+@keyframes scorePop {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.4);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.score-pop {
+  animation: scorePop 0.3s ease;
+}
