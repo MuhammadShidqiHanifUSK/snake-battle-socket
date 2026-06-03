@@ -92,11 +92,12 @@ def draw_hud(screen, fonts, players_data, width, grid_h, cell, score_flash):
         screen.blit(fonts['ctrl'].render(ctrl,  True, DIM),                    (x_pos, hud_y + 44))
 
 def draw_overlay(screen, fonts, width, grid_h, cell, message, sub="", col=WHITE):
-    ov = pygame.Surface((width, grid_h * cell), pygame.SRCALPHA)
-    ov.fill((0, 0, 0, 170))
+    total_h = grid_h * cell + 70   # nutup arena + HUD
+    ov = pygame.Surface((width, total_h), pygame.SRCALPHA)
+    ov.fill((0, 0, 0, 190))
     screen.blit(ov, (0, 0))
     cx = width // 2
-    cy = grid_h * cell // 2
+    cy = total_h // 2              # tengah layar penuh
     t1 = fonts['big'].render(message, True, col)
     screen.blit(t1, t1.get_rect(center=(cx, cy - 22)))
     if sub:
@@ -282,8 +283,8 @@ def run_game():
                 draw_overlay(screen, fonts, w, gh, CELL,
                              winner_msg, "Tekan R untuk main lagi", winner_col)
             elif stype == 'start':
-                # Tampilkan GO! selama 45 frame (~0.75 detik)
-                if go_timer < 45:
+                # Tampilkan GO! selama 90 frame (~1.5 detik)
+                if go_timer < 90:
                     go_timer += 1
                     draw_overlay(screen, fonts, w, gh, CELL, "GO!", "", P1)
             elif stype == 'countdown':
