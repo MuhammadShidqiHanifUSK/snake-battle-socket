@@ -7,8 +7,8 @@ import time
 # ─── Konfigurasi ───────────────────────────────────────────
 HOST = '0.0.0.0'   # terima koneksi dari semua IP
 PORT = 5555        # port yang dipakai
-GRID_W = 20        # lebar arena (dalam kotak)
-GRID_H = 20        # tinggi arena (dalam kotak)
+GRID_W = 30        # lebar arena (dalam kotak)
+GRID_H = 25        # tinggi arena (dalam kotak)
 TICK_RATE = 0.15   # kecepatan game (detik per tick)
 
 # ─── State game ────────────────────────────────────────────
@@ -188,11 +188,13 @@ def start_server():
         conn, addr = server.accept()
 
         # Tentukan posisi awal ular (kiri dan kanan)
+        # Player 1 — pojok kiri
         if player_id == 1:
-            start_snake = [{'x': 5, 'y': 10}, {'x': 4, 'y': 10}, {'x': 3, 'y': 10}]
+            start_snake = [{'x': 2, 'y': 5}, {'x': 1, 'y': 5}, {'x': 0, 'y': 5}]
             start_dir = 'RIGHT'
+        # Player 2 — pojok kanan
         else:
-            start_snake = [{'x': 14, 'y': 10}, {'x': 15, 'y': 10}, {'x': 16, 'y': 10}]
+            start_snake = [{'x': 17, 'y': 14}, {'x': 18, 'y': 14}, {'x': 19, 'y': 14}]
             start_dir = 'LEFT'
 
         with lock:
@@ -213,12 +215,13 @@ def start_server():
         player_id += 1
 
     print("[*] 2 pemain terkoneksi! Game dimulai dalam 3 detik...")
-    time.sleep(3)
-
     food = spawn_food()
-    game_running = True
+    # Countdown 6-5-4-3-2-1
+    for i in range(6, 0, -1):
+        broadcast({'type': 'countdown', 'count': i, 'food': food})
+        time.sleep(1)
 
-    # Broadcast countdown ke client
+    game_running = True
     broadcast({'type': 'start', 'food': food})
 
     game_loop()
