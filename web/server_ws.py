@@ -11,12 +11,21 @@ GRID_H    = 25
 TICK_RATE = 0.15
 
 # ─── State game ────────────────────────────────────────────
-players    = {}   # { ws: { 'id': int, 'snake': [...], 'dir': str, 'score': int, 'alive': bool } }
-food       = None
+players      = {}
+food         = None
 game_running = False
-connected  = []   # list websocket yang terkonek
+connected    = []
 
 # ─── Fungsi bantu ──────────────────────────────────────────
+def reset_game():
+    """Reset semua state game untuk sesi baru."""
+    global players, food, game_running, connected
+    players      = {}
+    food         = None
+    game_running = False
+    connected    = []
+    print("[*] State game direset, siap menerima pemain baru...")
+
 def spawn_food():
     occupied = []
     for p in players.values():
@@ -44,7 +53,7 @@ def move_snake(snake, direction):
     return head
 
 async def broadcast(data):
-    msg = json.dumps(data)
+    msg  = json.dumps(data)
     dead = []
     for ws in list(connected):
         try:
@@ -66,20 +75,17 @@ async def game_loop():
         if len(players) < 2:
             continue
 
-        # Gerakkan semua ular
         for ws, p in list(players.items()):
             if not p['alive']:
                 continue
             new_head = move_snake(p['snake'], p['dir'])
             p['snake'].insert(0, new_head)
-
             if new_head == food:
                 p['score'] += 1
                 food = spawn_food()
             else:
                 p['snake'].pop()
 
-        # Cek tabrakan
         dead_this_tick = []
         for ws, p in list(players.items()):
             if not p['alive']:
@@ -92,23 +98,16 @@ async def game_loop():
             if ws in players:
                 players[ws]['alive'] = False
 
-        # Broadcast state
         state = {
             'type': 'state',
             'food': food,
             'players': [
-                {
-                    'id': p['id'],
-                    'snake': p['snake'],
-                    'score': p['score'],
-                    'alive': p['alive']
-                }
+                {'id': p['id'], 'snake': p['snake'], 'score': p['score'], 'alive': p['alive']}
                 for p in players.values()
             ]
         }
         await broadcast(state)
 
-        # Cek game over
         alive = [p for p in players.values() if p['alive']]
         if len(alive) <= 1:
             winner_id = alive[0]['id'] if alive else None
@@ -118,20 +117,25 @@ async def game_loop():
             break
 
     print("[*] Game loop berhenti.")
+    # Tunggu sebentar lalu reset state untuk game baru
+    await asyncio.sleep(3)
+    reset_game()
 
 # ─── Handle koneksi WebSocket ──────────────────────────────
 async def handle_connection(ws):
     global food, game_running
 
-    if len(players) >= 2:
-        await ws.send(json.dumps({'type': 'error', 'msg': 'Server penuh (max 2 pemain)'}))
+    # Tolak jika sudah ada 2 pemain ATAU game sedang berjalan
+    if len(players) >= 2 or game_running:
+        await ws.send(json.dumps({'type': 'error', 'msg': 'Server sedang penuh, tunggu game selesai'}))
+        await ws.close()
         return
 
     player_id = len(players) + 1
     connected.append(ws)
 
     if player_id == 1:
-        start_snake = [{'x': 2, 'y': 5}, {'x': 1, 'y': 5}, {'x': 0, 'y': 5}]
+        start_snake = [{'x': 2,  'y': 5},  {'x': 1,  'y': 5},  {'x': 0,  'y': 5}]
         start_dir   = 'RIGHT'
     else:
         start_snake = [{'x': 27, 'y': 19}, {'x': 28, 'y': 19}, {'x': 29, 'y': 19}]
@@ -145,10 +149,14 @@ async def handle_connection(ws):
         'alive': True
     }
 
-    await ws.send(json.dumps({'type': 'init', 'player_id': player_id, 'grid_w': GRID_W, 'grid_h': GRID_H}))
+    await ws.send(json.dumps({
+        'type':     'init',
+        'player_id': player_id,
+        'grid_w':   GRID_W,
+        'grid_h':   GRID_H
+    }))
     print(f"[+] Player {player_id} konek")
 
-    # Jika sudah 2 player, mulai game
     if len(players) == 2:
         print("[*] 2 pemain terkonek! Memulai countdown...")
         food = spawn_food()
@@ -159,7 +167,6 @@ async def handle_connection(ws):
         await broadcast({'type': 'start', 'food': food})
         asyncio.create_task(game_loop())
 
-    # Terima input dari client
     try:
         async for message in ws:
             try:
